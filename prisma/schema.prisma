@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  customer
+  vendor
+  admin
+}
+
+enum VendorStatus {
+  pending
+  active
+  suspended
+}
+
+enum RequirementStatus {
+  draft
+  matching
+  invited
+  booked
+  completed
+  cancelled
+}
+
+enum InvitationStatus {
+  pending
+  viewed
+  accepted
+  rejected
+  expired
+}
+
+enum BookingStatus {
+  pending_payment
+  confirmed
+  completed
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  phone        String?       @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  vendor       Vendor?
+  requirements Requirement[]
+  bookings     Booking[]
+  reviews      Review[]
+
+  @@index([role])
+}
+
+model Vendor {
+  id           String               @id @default(cuid())
+  userId       String               @unique
+  businessName String
+  experience   Int
+  rating       Float                @default(0)
+  responseRate Float                @default(0)
+  verified     Boolean              @default(false)
+  status       VendorStatus         @default(pending)
+  user         User                 @relation(fields: [userId], references: [id])
+  profile      VendorProfile?
+  availability VendorAvailability[]
+  portfolio    Portfolio[]
+  matches      Match[]
+  invitations  Invitation[]
+  bookings     Booking[]
+  reviews      Review[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([status, verified])
+  @@index([rating])
+}
+
+model VendorProfile {
+  id              String   @id @default(cuid())
+  vendorId        String   @unique
+  description     String
+  services        String[]
+  specializations String[]
+  cities          String[]
+  travelRadius    Int
+  priceMin        Decimal
+  priceMax        Decimal
+  vendor          Vendor   @relation(fields: [vendorId], references: [id])
+
+  @@index([cities])
+  @@index([services])
+}
+
+model Requirement {
+  id           String            @id @default(cuid())
+  userId       String
+  eventType    String
+  city         String
+  budget       Decimal
+  guestCount   Int
+  theme        String?
+  eventDate    DateTime
+  specialNotes String?
+  status       RequirementStatus @default(matching)
+  user         User              @relation(fields: [userId], references: [id])
+  matches      Match[]
+  invitations  Invitation[]
+  bookings     Booking[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([city, eventType])
+  @@index([budget])
+  @@index([eventDate])
+  @@index([status])
+}
+
+model Match {
+  id            String      @id @default(cuid())
+  requirementId String
+  vendorId      String
+  score         Float
+  rank          Int
+  matchedByAI   Boolean     @default(true)
+  reason        String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  vendor        Vendor      @relation(fields: [vendorId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@unique([requirementId, vendorId])
+  @@index([requirementId, rank])
+  @@index([score])
+}
+
+model Invitation {
+  id            String           @id @default(cuid())
+  vendorId      String
+  requirementId String
+  status        InvitationStatus @default(pending)
+  sentAt        DateTime         @default(now())
+  respondedAt   DateTime?
+  vendor        Vendor           @relation(fields: [vendorId], references: [id])
+  requirement   Requirement      @relation(fields: [requirementId], references: [id])
+  responses     Response[]
+
+  @@index([vendorId, status])
+  @@index([requirementId, status])
+}
+
+model Response {
+  id            String      @id @default(cuid())
+  vendorId      String
+  requirementId String
+  invitationId  String?
+  quotation     Decimal
+  message       String?
+  status        String
+  invitation    Invitation? @relation(fields: [invitationId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@index([vendorId, requirementId])
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  vendorId      String
+  userId        String
+  requirementId String
+  amount        Decimal
+  paymentStatus PaymentStatus @default(pending)
+  bookingStatus BookingStatus @default(pending_payment)
+  vendor        Vendor        @relation(fields: [vendorId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  requirement   Requirement   @relation(fields: [requirementId], references: [id])
+  review        Review?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId, bookingStatus])
+  @@index([vendorId, bookingStatus])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  bookingId String   @unique
+  userId    String
+  vendorId  String
+  rating    Int
+  review    String?
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([vendorId, rating])
+}
+
+model VendorAvailability {
+  id        String   @id @default(cuid())
+  vendorId  String
+  date      DateTime
+  available Boolean  @default(true)
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+
+  @@unique([vendorId, date])
+  @@index([date, available])
+}
+
+model Portfolio {
+  id        String   @id @default(cuid())
+  vendorId  String
+  imageUrl  String
+  category  String
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([vendorId, category])
+}
