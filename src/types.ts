@@ -41,8 +41,15 @@ export interface User {
   name: string;
   email: string;
   phone?: string;
+  profilePhoto?: string;
   role: Role;
   createdAt: string;
+}
+
+export interface CustomerProfilePayload {
+  name: string;
+  email: string;
+  phone?: string;
 }
 
 export type EventType = 'wedding' | 'birthday' | 'engagement' | 'corporate_event' | 'baby_shower' | 'reception';
@@ -87,7 +94,39 @@ export interface Vendor {
   cities: string[];
   priceMin: number;
   priceMax: number;
+  portfolio: VendorWork[];
   availableDates: string[];
+}
+
+export interface VendorWork {
+  id: string;
+  vendorId: string;
+  title: string;
+  category: string;
+  description?: string;
+  eventDate?: string;
+  location?: string;
+  clientName?: string;
+  guestCount?: number;
+  budgetRange?: string;
+  services: string[];
+  highlights: string[];
+  imageUrl: string;
+  createdAt: string;
+}
+
+export interface VendorWorkPayload {
+  title: string;
+  category: string;
+  description?: string;
+  eventDate?: string;
+  location?: string;
+  clientName?: string;
+  guestCount?: number;
+  budgetRange?: string;
+  services: string[];
+  highlights: string[];
+  image: File;
 }
 
 export interface RequirementInsights {

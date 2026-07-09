@@ -3,6 +3,7 @@ import type {
   AuthSession,
   Booking,
   CreateBookingPayload,
+  CustomerProfilePayload,
   Invitation,
   LoginPayload,
   Match,
@@ -14,6 +15,8 @@ import type {
   User,
   Vendor,
   VendorRegistrationPayload,
+  VendorWork,
+  VendorWorkPayload,
 } from './types';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1';
@@ -34,9 +37,10 @@ export function clearSession() {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = loadSession()?.accessToken;
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      'Content-Type': 'application/json',
+      ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -78,7 +82,41 @@ export const api = {
   listRequirements: () => request<Requirement[]>('/requirements'),
   listMatches: (requirementId: string) => request<Match[]>(`/matching/requirements/${requirementId}/vendors`),
   listUsers: () => request<User[]>('/users'),
-  listVendors: () => request<Vendor[]>('/vendors'),
+  getUser: (id: string) => request<User>(`/users/${id}`),
+  updateCustomerProfile: (id: string, payload: CustomerProfilePayload) =>
+    request<User>(`/users/${id}/profile`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  uploadCustomerProfilePhoto: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('profilePhoto', file);
+    return request<User>(`/users/${id}/profile-photo`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  createVendorWork: (vendorId: string, payload: VendorWorkPayload) => {
+    const formData = new FormData();
+    formData.append('title', payload.title);
+    formData.append('category', payload.category);
+    formData.append('description', payload.description ?? '');
+    formData.append('eventDate', payload.eventDate ?? '');
+    formData.append('location', payload.location ?? '');
+    formData.append('clientName', payload.clientName ?? '');
+    if (payload.guestCount !== undefined) {
+      formData.append('guestCount', String(payload.guestCount));
+    }
+    formData.append('budgetRange', payload.budgetRange ?? '');
+    formData.append('services', payload.services.join(','));
+    formData.append('highlights', payload.highlights.join(','));
+    formData.append('image', payload.image);
+    return request<VendorWork>(`/vendors/${vendorId}/portfolio`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  listVendors: (includeAll = false) => request<Vendor[]>(includeAll ? '/vendors?includeAll=true' : '/vendors'),
   createVendor: (userId: string, payload: VendorRegistrationPayload) =>
     request<Vendor>('/vendors', {
       method: 'POST',

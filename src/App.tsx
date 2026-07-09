@@ -3,9 +3,11 @@ import {
   BadgeCheck,
   BarChart3,
   CalendarDays,
+  Camera,
   Check,
   ChevronRight,
   ClipboardList,
+  ImagePlus,
   IndianRupee,
   LayoutDashboard,
   LogOut,
@@ -20,14 +22,17 @@ import {
   UserPlus,
   UserRound,
   UsersRound,
+  Save,
   X,
 } from 'lucide-react';
 import { API_BASE_URL, api, clearSession, loadSession, saveSession } from './api';
+import { prepareProfileImage, prepareWorkImage } from './image-utils';
 import type {
   AdminDashboard,
   AuthSession,
   Booking,
   CreateBookingPayload,
+  CustomerProfilePayload,
   Invitation,
   Match,
   RegisterPayload,
@@ -39,6 +44,8 @@ import type {
   User,
   Vendor,
   VendorRegistrationPayload,
+  VendorWork,
+  VendorWorkPayload,
 } from './types';
 
 const defaultRequirement: RequirementForm = {
@@ -66,7 +73,7 @@ const roles: Array<{ id: Role; label: string; icon: typeof UserRound }> = [
   { id: 'admin', label: 'Admin', icon: LayoutDashboard },
 ];
 
-type WorkflowStep = 'profile' | 'requirement' | 'matching' | 'invitation' | 'booking' | 'review';
+type WorkflowStep = 'profile' | 'requirement' | 'matching' | 'vendors' | 'works' | 'invitation' | 'booking' | 'review';
 
 const workflowSteps: Array<{ id: WorkflowStep; label: string; icon: typeof ClipboardList }> = [
   { id: 'profile', label: 'Profile', icon: UserRound },
@@ -77,10 +84,45 @@ const workflowSteps: Array<{ id: WorkflowStep; label: string; icon: typeof Clipb
   { id: 'review', label: 'Review', icon: Star },
 ];
 
+function getWorkflowSteps(role: Role): Array<{ id: WorkflowStep; label: string; icon: typeof ClipboardList }> {
+  if (role === 'admin') {
+    return [
+      { id: 'profile', label: 'Admin Overview', icon: LayoutDashboard },
+      { id: 'requirement', label: 'Customers', icon: UsersRound },
+      { id: 'matching', label: 'Vendor Approval', icon: Store },
+      { id: 'invitation', label: 'Reachouts', icon: Send },
+      { id: 'booking', label: 'Bookings & Payments', icon: IndianRupee },
+      { id: 'review', label: 'Reviews', icon: Star },
+    ];
+  }
+
+  if (role === 'vendor') {
+    return [
+      { id: 'profile', label: 'Vendor Profile', icon: Store },
+      { id: 'requirement', label: 'Requirement', icon: ClipboardList },
+      { id: 'matching', label: 'Services & Availability', icon: CalendarDays },
+      { id: 'works', label: 'Works', icon: ImagePlus },
+      { id: 'invitation', label: 'Invitations', icon: Send },
+      { id: 'booking', label: 'Bookings', icon: IndianRupee },
+      { id: 'review', label: 'Reviews', icon: Star },
+    ];
+  }
+
+  return [
+    { id: 'profile', label: 'Profile', icon: UserRound },
+    { id: 'requirement', label: 'Requirement', icon: ClipboardList },
+    { id: 'matching', label: 'AI Matching', icon: Sparkles },
+    { id: 'vendors', label: 'Vendors', icon: Store },
+    { id: 'invitation', label: 'Invitation', icon: Send },
+    { id: 'booking', label: 'Booking', icon: IndianRupee },
+    { id: 'review', label: 'Review', icon: Star },
+  ];
+}
+
 export function App() {
   const [session, setSession] = useState<AuthSession | null>(() => loadSession());
   const [activeStep, setActiveStep] = useState<WorkflowStep>('profile');
-  const [avatar, setAvatar] = useState<string>(() => localStorage.getItem('happiffie_avatar') ?? '');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [requirement, setRequirement] = useState<RequirementForm>(defaultRequirement);
   const [freeText, setFreeText] = useState(
     'Need a traditional South Indian wedding in Chennai for 500 guests on 2026-08-15. Budget is 500000. Prefer temple theme decor.',
@@ -95,6 +137,7 @@ export function App() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [admin, setAdmin] = useState<AdminDashboard | null>(null);
   const [activeRequirementId, setActiveRequirementId] = useState('req_wedding_1');
+  const [selectedVendorId, setSelectedVendorId] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [notice, setNotice] = useState(`Connects to backend at ${API_BASE_URL}`);
   const role = session?.role ?? 'customer';
@@ -106,6 +149,7 @@ export function App() {
   }, [session?.accessToken]);
 
   const vendorMap = useMemo(() => new Map(vendors.map((vendor) => [vendor.id, vendor])), [vendors]);
+  const visibleWorkflowSteps = useMemo(() => getWorkflowSteps(role), [role]);
 
   async function runAction(label: string, action: () => Promise<void>) {
     setLoading(label);
@@ -146,6 +190,7 @@ export function App() {
   function handleLogout() {
     clearSession();
     setSession(null);
+    setCurrentUser(null);
     setActiveStep('profile');
     setSavedRequirements([]);
     setMatches([]);
@@ -157,28 +202,42 @@ export function App() {
     setNotice('Signed out.');
   }
 
-  function handleAvatarChange(file?: File) {
+  async function handleAvatarChange(file?: File) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const value = String(reader.result ?? '');
-      setAvatar(value);
-      localStorage.setItem('happiffie_avatar', value);
-    };
-    reader.readAsDataURL(file);
+    if (!session) return;
+    await runAction('Optimizing profile photo', async () => {
+      const optimizedFile = await prepareProfileImage(file);
+      const updated = await api.uploadCustomerProfilePhoto(session.userId, optimizedFile);
+      setCurrentUser(updated);
+      setNotice('Profile photo saved.');
+    });
+  }
+
+  async function updateCustomerProfile(payload: CustomerProfilePayload) {
+    if (!session) return;
+    await runAction('Updating profile', async () => {
+      const updated = await api.updateCustomerProfile(session.userId, payload);
+      setCurrentUser(updated);
+      const nextSession = { ...session, email: updated.email };
+      saveSession(nextSession);
+      setSession(nextSession);
+      setNotice('Customer profile updated.');
+    });
   }
 
   async function refreshSharedData() {
     await runAction('Loading workspace', async () => {
-      const [requirementsData, vendorsData, invitationData, bookingData, reviewData, adminData] = await Promise.all([
+      const [profileData, requirementsData, vendorsData, invitationData, bookingData, reviewData, adminData] = await Promise.all([
+        session ? api.getUser(session.userId) : Promise.resolve(null),
         api.listRequirements(),
-        api.listVendors(),
+        api.listVendors(role !== 'customer'),
         api.listInvitations(),
         api.listBookings(),
         api.listReviews(),
         api.adminDashboard(),
       ]);
       const usersData = role === 'admin' ? await api.listUsers() : [];
+      setCurrentUser(profileData);
       setSavedRequirements(requirementsData);
       setUsers(usersData);
       setVendors(vendorsData);
@@ -282,6 +341,19 @@ export function App() {
     });
   }
 
+  async function createVendorWork(vendorId: string, payload: VendorWorkPayload) {
+    await runAction('Uploading vendor work', async () => {
+      const optimizedImage = await prepareWorkImage(payload.image);
+      const work = await api.createVendorWork(vendorId, { ...payload, image: optimizedImage });
+      setVendors((current) =>
+        current.map((vendor) =>
+          vendor.id === vendorId ? { ...vendor, portfolio: [work, ...(vendor.portfolio ?? [])] } : vendor,
+        ),
+      );
+      setNotice('Vendor work added to portfolio.');
+    });
+  }
+
   if (!session) {
     return <AuthPage loading={loading} notice={notice} onLogin={handleLogin} onRegister={handleRegister} />;
   }
@@ -299,11 +371,11 @@ export function App() {
 
         <div className="session-card">
           <label className="avatar-upload">
-            {avatar ? <img src={avatar} alt="Profile" /> : <span>{session.email.slice(0, 2).toUpperCase()}</span>}
-            <input type="file" accept="image/*" onChange={(event) => handleAvatarChange(event.target.files?.[0])} />
+            {currentUser?.profilePhoto ? <img src={currentUser.profilePhoto} alt="Profile" /> : <span>{(currentUser?.name ?? session.email).slice(0, 2).toUpperCase()}</span>}
+            <input type="file" accept="image/*" onChange={(event) => void handleAvatarChange(event.target.files?.[0])} />
           </label>
           <span>Signed in</span>
-          <strong>{session.email}</strong>
+          <strong>{currentUser?.name ?? session.email}</strong>
           <small>{titleCase(session.role)} access</small>
         </div>
 
@@ -326,7 +398,7 @@ export function App() {
         </button>
 
         <div className="flow-list">
-          {workflowSteps.map((step) => (
+          {visibleWorkflowSteps.map((step) => (
             <FlowStep
               key={step.id}
               icon={step.icon}
@@ -341,7 +413,9 @@ export function App() {
                       ? invitations.length > 0
                       : step.id === 'booking'
                         ? bookings.length > 0
-                        : reviews.length > 0
+                        : step.id === 'vendors' || step.id === 'works'
+                          ? vendors.some((vendor) => (vendor.portfolio ?? []).length > 0)
+                          : reviews.length > 0
               }
               onClick={() => setActiveStep(step.id)}
             />
@@ -392,8 +466,13 @@ export function App() {
             bookings={bookings}
             reviews={reviews}
             session={session}
+            currentUser={currentUser}
             activeStep={activeStep}
-            avatar={avatar}
+            onUpdateProfile={updateCustomerProfile}
+            onUploadProfilePhoto={handleAvatarChange}
+            vendors={vendors}
+            selectedVendorId={selectedVendorId}
+            onSelectVendor={setSelectedVendorId}
           />
         ) : null}
 
@@ -406,6 +485,7 @@ export function App() {
             vendors={vendors}
             session={session}
             activeStep={activeStep}
+            onCreateWork={createVendorWork}
           />
         ) : null}
 
@@ -598,26 +678,61 @@ function CustomerPanel(props: {
   bookings: Booking[];
   reviews: Review[];
   session: AuthSession;
+  currentUser: User | null;
   activeStep: WorkflowStep;
-  avatar: string;
+  onUpdateProfile: (payload: CustomerProfilePayload) => Promise<void>;
+  onUploadProfilePhoto: (file?: File) => Promise<void>;
+  vendors: Vendor[];
+  selectedVendorId: string;
+  onSelectVendor: (id: string) => void;
 }) {
+  const [profileForm, setProfileForm] = useState<CustomerProfilePayload>({
+    name: props.currentUser?.name ?? '',
+    email: props.currentUser?.email ?? props.session.email,
+    phone: props.currentUser?.phone ?? '',
+  });
+
+  useEffect(() => {
+    setProfileForm({
+      name: props.currentUser?.name ?? '',
+      email: props.currentUser?.email ?? props.session.email,
+      phone: props.currentUser?.phone ?? '',
+    });
+  }, [props.currentUser?.id, props.currentUser?.name, props.currentUser?.email, props.currentUser?.phone, props.session.email]);
+
   const update = <K extends keyof RequirementForm>(key: K, value: RequirementForm[K]) => {
     props.setRequirement({ ...props.requirement, [key]: value });
   };
   const topMatch = props.matches[0];
   const customerBookings = props.bookings.filter((booking) => booking.userId === props.session.userId || booking.userId === 'usr_customer_1');
   const latestBooking = customerBookings[0];
+  const selectedVendor = props.vendors.find((vendor) => vendor.id === props.selectedVendorId) ?? props.vendors[0];
 
   return (
     <div className="panel-grid customer-grid">
       {props.activeStep === 'profile' ? <section className="work-section profile-section">
-        <SectionHeader icon={UserCheck} title="Customer profile" action="My flow" />
+        <SectionHeader icon={UserCheck} title="Customer profile" action="Editable" />
         <div className="profile-summary">
-          {props.avatar ? <img className="profile-image" src={props.avatar} alt="Customer profile" /> : <div className="brand-mark wide">CU</div>}
+          <label className="profile-photo-control">
+            {props.currentUser?.profilePhoto ? <img className="profile-image large" src={props.currentUser.profilePhoto} alt="Customer profile" /> : <div className="brand-mark wide">CU</div>}
+            <input type="file" accept="image/*" onChange={(event) => void props.onUploadProfilePhoto(event.target.files?.[0])} />
+            <span><Camera size={15} /> Photo</span>
+          </label>
           <div>
-            <h2>{props.session.email}</h2>
-            <p>Customer workspace for event requirements, AI recommendations, vendor invitations, quotes, bookings, and reviews.</p>
+            <h2>{props.currentUser?.name ?? 'Customer profile'}</h2>
+            <p>{props.currentUser?.email ?? props.session.email}</p>
           </div>
+        </div>
+        <div className="form-grid profile-edit-grid">
+          <TextInput label="Name" value={profileForm.name} onChange={(value) => setProfileForm((current) => ({ ...current, name: value }))} />
+          <TextInput label="Email" value={profileForm.email} onChange={(value) => setProfileForm((current) => ({ ...current, email: value }))} />
+          <TextInput label="Phone" value={profileForm.phone ?? ''} onChange={(value) => setProfileForm((current) => ({ ...current, phone: value }))} />
+        </div>
+        <div className="button-row">
+          <button className="primary-button" onClick={() => void props.onUpdateProfile(profileForm)}>
+            <Save size={18} />
+            Save Profile
+          </button>
         </div>
         <div className="process-strip">
           <span>Create event</span>
@@ -722,6 +837,34 @@ function CustomerPanel(props: {
               </article>
             );
           })}
+        </div>
+      </section> : null}
+
+      {props.activeStep === 'vendors' ? <section className="work-section wide-section">
+        <SectionHeader icon={Store} title="Vendor works" action={`${props.vendors.length} vendors`} />
+        <div className="vendor-gallery-layout">
+          <div className="compact-list">
+            {props.vendors.map((vendor) => (
+              <button
+                className={`list-button ${selectedVendor?.id === vendor.id ? 'active' : ''}`}
+                key={vendor.id}
+                onClick={() => props.onSelectVendor(vendor.id)}
+              >
+                <span>{vendor.businessName}</span>
+                <small>{vendor.portfolio?.length ?? 0} work cards - {vendor.cities.map(titleCase).join(', ')}</small>
+              </button>
+            ))}
+          </div>
+          <div>
+            <div className="profile-summary compact-profile">
+              <div className="brand-mark wide">{selectedVendor?.businessName.split(' ').map((part) => part[0]).join('').slice(0, 2) ?? 'VN'}</div>
+              <div>
+                <h2>{selectedVendor?.businessName ?? 'Select a vendor'}</h2>
+                <p>{selectedVendor?.description ?? 'Click a vendor to view birthday, marriage, and event work cards.'}</p>
+              </div>
+            </div>
+            <WorkCardGrid works={selectedVendor?.portfolio ?? []} />
+          </div>
         </div>
       </section> : null}
 
@@ -845,12 +988,27 @@ function VendorPanel(props: {
   session: AuthSession;
   activeStep: WorkflowStep;
   onRespond: (id: string, status: 'accepted' | 'rejected') => Promise<void>;
+  onCreateWork: (vendorId: string, payload: VendorWorkPayload) => Promise<void>;
 }) {
   const activeVendor =
+    props.vendors.find((vendor) => vendor.userId === props.session.userId) ??
     props.vendors.find((vendor) => (props.session.email.includes('golden') ? vendor.id === 'ven_photo_1' : vendor.id === 'ven_decor_1')) ??
     props.vendors[0];
   const vendorInvitations = props.invitations.filter((invitation) => !activeVendor || invitation.vendorId === activeVendor.id);
   const vendorBookings = props.bookings.filter((booking) => !activeVendor || booking.vendorId === activeVendor.id);
+  const [workForm, setWorkForm] = useState({
+    title: 'Birthday stage decoration',
+    category: 'birthday',
+    description: 'Balloon wall, cake table, and themed entrance setup.',
+    eventDate: '2026-08-15',
+    location: 'Chennai',
+    clientName: 'Raman Family',
+    guestCount: 250,
+    budgetRange: 'Rs 2L - Rs 4L',
+    services: 'decorator, flower_designer',
+    highlights: 'Balloon wall, Cake table, Theme entrance',
+    image: null as File | null,
+  });
 
   return (
     <div className="panel-grid vendor-grid">
@@ -887,6 +1045,74 @@ function VendorPanel(props: {
             </div>
           ))}
         </div>
+      </section> : null}
+
+      {props.activeStep === 'works' ? <section className="work-section wide-section">
+        <SectionHeader icon={ImagePlus} title="Work cards" action={`${activeVendor?.portfolio?.length ?? 0} posted`} />
+        <div className="form-grid">
+          <TextInput label="Work title" value={workForm.title} onChange={(value) => setWorkForm((current) => ({ ...current, title: value }))} />
+          <label>
+            Category
+            <select value={workForm.category} onChange={(event) => setWorkForm((current) => ({ ...current, category: event.target.value }))}>
+              <option value="birthday">Birthday</option>
+              <option value="marriage">Marriage</option>
+              <option value="engagement">Engagement</option>
+              <option value="corporate_event">Corporate Event</option>
+              <option value="baby_shower">Baby Shower</option>
+              <option value="reception">Reception</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Description
+          <textarea value={workForm.description} onChange={(event) => setWorkForm((current) => ({ ...current, description: event.target.value }))} rows={3} />
+        </label>
+        <div className="form-grid profile-edit-grid">
+          <label>
+            Event date
+            <input type="date" value={workForm.eventDate} onChange={(event) => setWorkForm((current) => ({ ...current, eventDate: event.target.value }))} />
+          </label>
+          <TextInput label="Location" value={workForm.location} onChange={(value) => setWorkForm((current) => ({ ...current, location: value }))} />
+          <TextInput label="Client name" value={workForm.clientName} onChange={(value) => setWorkForm((current) => ({ ...current, clientName: value }))} />
+          <NumberInput label="Guest count" value={workForm.guestCount} onChange={(value) => setWorkForm((current) => ({ ...current, guestCount: value }))} />
+          <TextInput label="Budget range" value={workForm.budgetRange} onChange={(value) => setWorkForm((current) => ({ ...current, budgetRange: value }))} />
+          <TextInput label="Services used" value={workForm.services} onChange={(value) => setWorkForm((current) => ({ ...current, services: value }))} />
+        </div>
+        <label>
+          Highlights
+          <textarea value={workForm.highlights} onChange={(event) => setWorkForm((current) => ({ ...current, highlights: event.target.value }))} rows={2} />
+        </label>
+        <label className="file-input-row">
+          Work image
+          <input type="file" accept="image/*" onChange={(event) => setWorkForm((current) => ({ ...current, image: event.target.files?.[0] ?? null }))} />
+        </label>
+        <div className="button-row">
+          <button
+            className="primary-button"
+            disabled={!activeVendor || !workForm.image}
+            onClick={() =>
+              activeVendor && workForm.image
+                ? void props.onCreateWork(activeVendor.id, {
+                    title: workForm.title,
+                    category: workForm.category,
+                    description: workForm.description,
+                    eventDate: workForm.eventDate,
+                    location: workForm.location,
+                    clientName: workForm.clientName,
+                    guestCount: workForm.guestCount,
+                    budgetRange: workForm.budgetRange,
+                    services: toList(workForm.services),
+                    highlights: toList(workForm.highlights),
+                    image: workForm.image,
+                  })
+                : undefined
+            }
+          >
+            <ImagePlus size={18} />
+            Post Work
+          </button>
+        </div>
+        <WorkCardGrid works={activeVendor?.portfolio ?? []} />
       </section> : null}
 
       {props.activeStep === 'invitation' ? <section className="work-section wide-section">
@@ -1139,6 +1365,31 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function WorkCardGrid({ works }: { works: VendorWork[] }) {
+  return (
+    <div className="work-card-grid">
+      {works.map((work) => (
+        <article className="work-card" key={work.id}>
+          <img src={work.imageUrl} alt={work.title} />
+          <div>
+            <span>{titleCase(work.category.replace('_', ' '))}</span>
+            <strong>{work.title}</strong>
+            <p>{work.description || 'Vendor work uploaded for customer review.'}</p>
+            <div className="work-detail-list">
+              {work.location ? <small>{work.location}</small> : null}
+              {work.eventDate ? <small>{work.eventDate}</small> : null}
+              {work.guestCount ? <small>{work.guestCount} guests</small> : null}
+              {work.budgetRange ? <small>{work.budgetRange}</small> : null}
+            </div>
+            {work.services?.length ? <div className="work-chip-row">{work.services.map((service) => <em key={service}>{titleCase(service.replace('_', ' '))}</em>)}</div> : null}
+            {work.highlights?.length ? <p>{work.highlights.map(titleCase).join(' - ')}</p> : null}
+          </div>
+        </article>
+      ))}
     </div>
   );
 }
