@@ -6,6 +6,7 @@ export interface UserRecord {
   name: string;
   email: string;
   phone?: string;
+  profilePhoto?: string;
   role: UserRole;
   createdAt: string;
 }
@@ -26,8 +27,25 @@ export interface VendorRecord {
   travelRadius: number;
   priceMin: number;
   priceMax: number;
-  portfolio: string[];
+  portfolio: VendorWorkRecord[];
   availableDates: string[];
+}
+
+export interface VendorWorkRecord {
+  id: string;
+  vendorId: string;
+  title: string;
+  category: string;
+  description?: string;
+  eventDate?: string;
+  location?: string;
+  clientName?: string;
+  guestCount?: number;
+  budgetRange?: string;
+  services: string[];
+  highlights: string[];
+  imageUrl: string;
+  createdAt: string;
 }
 
 export interface RequirementRecord {
@@ -115,7 +133,24 @@ export class SampleStoreService {
       travelRadius: 80,
       priceMin: 150000,
       priceMax: 600000,
-      portfolio: ['https://cdn.example.com/temple-bloom/mandap.jpg'],
+      portfolio: [
+        {
+          id: 'work_temple_1',
+          vendorId: 'ven_decor_1',
+          title: 'Traditional mandap setup',
+          category: 'marriage',
+          description: 'Floral mandap and temple-style decor for a South Indian wedding.',
+          eventDate: '2026-02-12',
+          location: 'Chennai',
+          clientName: 'Raman Family',
+          guestCount: 450,
+          budgetRange: 'Rs 3L - Rs 5L',
+          services: ['decorator', 'flower_designer'],
+          highlights: ['Temple backdrop', 'Jasmine floral ceiling'],
+          imageUrl: 'https://cdn.example.com/temple-bloom/mandap.jpg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
       availableDates: ['2026-08-15', '2026-09-01'],
     },
     {
@@ -134,7 +169,24 @@ export class SampleStoreService {
       travelRadius: 120,
       priceMin: 90000,
       priceMax: 350000,
-      portfolio: ['https://cdn.example.com/golden-hour/wedding.jpg'],
+      portfolio: [
+        {
+          id: 'work_golden_1',
+          vendorId: 'ven_photo_1',
+          title: 'Golden hour wedding shoot',
+          category: 'marriage',
+          description: 'Candid wedding photography and reception coverage.',
+          eventDate: '2026-01-18',
+          location: 'Coimbatore',
+          clientName: 'Iyer Family',
+          guestCount: 300,
+          budgetRange: 'Rs 1L - Rs 2L',
+          services: ['photographer', 'candid_video'],
+          highlights: ['Golden hour couple shoot', 'Reception album'],
+          imageUrl: 'https://cdn.example.com/golden-hour/wedding.jpg',
+          createdAt: new Date().toISOString(),
+        },
+      ],
       availableDates: ['2026-08-15'],
     },
   ];

@@ -1,22 +1,45 @@
 import { Body, Controller, ForbiddenException, Post } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiForbiddenResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthResponseDto, LoginDto, OtpLoginDto, RegisterDto } from '../../common/api-dtos';
+import { PrismaService } from '../../common/prisma.service';
 import { SampleStoreService } from '../../common/sample-store.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly store: SampleStoreService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly store: SampleStoreService,
+  ) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register a customer, vendor, or admin user.' })
+  @ApiOperation({
+    summary: 'Register a customer, vendor, or admin user.',
+    description:
+      'Creates the user account. When the selected role is vendor, the frontend must also create a vendor profile through POST /vendors. Newly created vendor profiles are stored as pending and require admin approval before the vendor can log in.',
+  })
   @ApiCreatedResponse({ type: AuthResponseDto })
-  register(@Body() dto: RegisterDto): AuthResponseDto {
-    const id = `usr_${dto.role}_${Date.now()}`;
+  async register(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
+    const user = await this.prisma.user.upsert({
+      where: { email: dto.email.toLowerCase() },
+      update: {
+        name: dto.name,
+        phone: dto.phone,
+        role: dto.role,
+      },
+      create: {
+        name: dto.name,
+        email: dto.email.toLowerCase(),
+        phone: dto.phone,
+        passwordHash: dto.password,
+        role: dto.role,
+      },
+    });
+
     this.store.users.push({
-      id,
+      id: user.id,
       name: dto.name,
-      email: dto.email,
+      email: dto.email.toLowerCase(),
       phone: dto.phone,
       role: dto.role,
       createdAt: new Date().toISOString(),
@@ -25,21 +48,39 @@ export class AuthController {
     return {
       accessToken: 'mock-access-token',
       refreshToken: 'mock-refresh-token',
-      userId: id,
+      userId: user.id,
       role: dto.role,
     };
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Login with email and password.' })
+  @ApiOperation({
+    summary: 'Login with email and password.',
+    description:
+      'Returns mock JWT tokens for approved users. Vendor users can log in only after an admin activates their vendor profile with PATCH /vendors/{id}/status. Pending or missing vendor profiles receive a 403 response.',
+  })
   @ApiOkResponse({ type: AuthResponseDto })
-  login(@Body() dto: LoginDto): AuthResponseDto {
+  @ApiForbiddenResponse({
+    description: 'Vendor profile is pending admin approval. Admin must update the vendor status to active before login is allowed.',
+    schema: {
+      example: {
+        message: 'Vendor profile is pending admin approval.',
+        error: 'Forbidden',
+        statusCode: 403,
+      },
+    },
+  })
+  async login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     const email = dto.email.toLowerCase();
-    const user = this.store.users.find((item) => item.email.toLowerCase() === email);
+    const dbUser = await this.prisma.user.findUnique({
+      where: { email },
+      include: { vendor: true },
+    });
+    const user = dbUser ?? this.store.users.find((item) => item.email.toLowerCase() === email);
     const role = user?.role ?? (email.includes('admin') ? 'admin' : email.includes('vendor') || email.includes('temple') || email.includes('golden') ? 'vendor' : 'customer');
 
     if (role === 'vendor') {
-      const vendor = this.store.vendors.find((item) => {
+      const vendor = dbUser?.vendor ?? this.store.vendors.find((item) => {
         if (user?.id) {
           return item.userId === user.id;
         }

@@ -56,6 +56,7 @@ model User {
   name         String
   email        String        @unique
   phone        String?       @unique
+  profilePhoto String?
   passwordHash String
   role         UserRole
   createdAt    DateTime      @default(now())
@@ -226,8 +227,17 @@ model VendorAvailability {
 model Portfolio {
   id        String   @id @default(cuid())
   vendorId  String
+  title     String   @default("Vendor work")
   imageUrl  String
   category  String
+  description String?
+  eventDate DateTime?
+  location  String?
+  clientName String?
+  guestCount Int?
+  budgetRange String?
+  services String[]
+  highlights String[]
   vendor    Vendor   @relation(fields: [vendorId], references: [id])
   createdAt DateTime @default(now())
 

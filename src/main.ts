@@ -21,7 +21,9 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Happiffie API')
-    .setDescription('Backend APIs for AI-powered event requirement capture, vendor matching, invitations, bookings, and reviews.')
+    .setDescription(
+      'Backend APIs for AI-powered event requirement capture, vendor matching, invitations, bookings, and reviews. Vendor onboarding requires admin approval: POST /vendors creates a pending vendor profile, PATCH /vendors/{id}/status with active approves the vendor, and pending vendors receive 403 on login.',
+    )
     .setVersion('0.1.0')
     .addBearerAuth()
     .addTag('auth')

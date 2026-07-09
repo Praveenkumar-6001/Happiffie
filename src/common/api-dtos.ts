@@ -59,6 +59,23 @@ export class AuthResponseDto {
   role!: UserRole;
 }
 
+export class UpdateCustomerProfileDto {
+  @ApiPropertyOptional({ example: 'Ananya Raman' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'ananya@example.com' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ example: '+919876543210' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
 export class CreateRequirementDto {
   @ApiProperty({ enum: EventType, example: EventType.Wedding })
   @IsEnum(EventType)
@@ -209,16 +226,76 @@ export class CreateVendorDto {
 }
 
 export class UpdateVendorStatusDto {
-  @ApiProperty({ enum: VendorStatus, example: VendorStatus.Active })
+  @ApiProperty({
+    enum: VendorStatus,
+    example: VendorStatus.Active,
+    description:
+      'Admin-controlled vendor onboarding status. Use active to approve vendor login and matching access, pending to keep the vendor under review, or suspended to block participation.',
+  })
   @IsEnum(VendorStatus)
   status!: VendorStatus;
+}
+
+export class CreateVendorWorkDto {
+  @ApiProperty({ example: 'Birthday stage decoration' })
+  @IsString()
+  title!: string;
+
+  @ApiProperty({ example: 'birthday' })
+  @IsString()
+  category!: string;
+
+  @ApiPropertyOptional({ example: 'Balloon wall, cake table, and themed entrance setup.' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ example: '2026-08-15' })
+  @IsOptional()
+  @IsDateString()
+  eventDate?: string;
+
+  @ApiPropertyOptional({ example: 'Chennai' })
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @ApiPropertyOptional({ example: 'Raman Family' })
+  @IsOptional()
+  @IsString()
+  clientName?: string;
+
+  @ApiPropertyOptional({ example: 250 })
+  @IsOptional()
+  @IsInt()
+  guestCount?: number;
+
+  @ApiPropertyOptional({ example: 'Rs 2L - Rs 4L' })
+  @IsOptional()
+  @IsString()
+  budgetRange?: string;
+
+  @ApiPropertyOptional({ example: ['decorator', 'flower_designer'], isArray: true })
+  @IsOptional()
+  @IsArray()
+  services?: string[];
+
+  @ApiPropertyOptional({ example: ['Balloon wall', 'Cake table', 'Theme entrance'], isArray: true })
+  @IsOptional()
+  @IsArray()
+  highlights?: string[];
 }
 
 export class VendorResponseDto extends CreateVendorDto {
   @ApiProperty({ example: 'ven_decor_1' })
   id!: string;
 
-  @ApiProperty({ enum: VendorStatus })
+  @ApiProperty({
+    enum: VendorStatus,
+    example: VendorStatus.Pending,
+    description:
+      'Vendor onboarding status. New vendor profiles start as pending. Only active vendors can log in, appear in search, and be ranked by the matching engine.',
+  })
   status!: VendorStatus;
 }
 
